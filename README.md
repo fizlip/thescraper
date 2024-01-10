@@ -10,12 +10,12 @@ with specific knowledge of the swedish justice system.
 ## How it works
 The government website is structured as follows:
 
-A list paginated list of laws (there are 268 pages)
+A paginated list of laws (there are 268 pages)
 ```
 https://www.riksdagen.se/sv/sok/?doktyp=sfs&dokstat=g%C3%A4llande+sfs&p=PAGE
 ```
-Each page has 20 links that are extracted, the links contain another link
-to the raw source on the website of the government office.
+each page has 20 links that are extracted. Each page in the link contains 
+another link to the official source on the website of the government office.
 ```
 http://rkrattsbaser.gov.se/sfsr?bet=LAW_ID
 ```
@@ -27,7 +27,8 @@ those and then gets the raw text.
 ```
 page link -> law page link -> raw text from official source
 ```
-We do this for all 268 pages on the website.
+We do this for all 268 pages on the website, resulting in a structured dataset
+of all swedish laws.
 
 ## Usage
 
