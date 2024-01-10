@@ -4,6 +4,7 @@ use scraper::{Html, Selector};
 use scraper::html::Select;
 use std::iter::Enumerate;
 use scraper::ElementRef;
+use regex::Regex;
 
 const PAGE_SIZE:usize = 20;
 const LINK_TAG: &str = "a.sc-3189427c-0";
@@ -12,7 +13,7 @@ const RAW_TEXT_TAG: &str = "div.body-text";
 fn main_page_links(i: u64, take: usize) -> Vec<String>{
     // Get HTML 
     let url = format!("https://www.riksdagen.se/sv/sok/?doktyp=sfs&dokstat=g%C3%A4llande+sfs&p={}",i);
-    let iter = extract_tag(&url, 1, take, LINK_TAG, "href");
+    let iter = extract_tag(&url, 3, take, LINK_TAG, "href");
     iter
 }
 
@@ -36,7 +37,7 @@ fn extract_tag(url: &str, ignore: usize, take: usize, tag: &str, attr: &str) -> 
     let mut res: Vec<String>;
 
     if attr.len() > 0 {
-        res = iter.take(take).map(|x| x.value().attr("href").unwrap().to_string()).collect();
+        res = iter.take(take).map(|x| x.value().attr(attr).unwrap().to_string()).collect();
     }
     else {
         res = iter.map(|x| x.text().next().unwrap().to_string()).collect();
@@ -45,13 +46,49 @@ fn extract_tag(url: &str, ignore: usize, take: usize, tag: &str, attr: &str) -> 
     res
 }
 
+fn write_paragraphs(url: &str) {
+    let re: regex::Regex = Regex::new(r"^((\d|\s)*§)").unwrap();
+
+    println!("{:?}", url);
+    let raw_text_1 = extract_tag(url, 0, 1, RAW_TEXT_TAG, "")[0].replace("\t", "");
+
+    let raw_text_1 = raw_text_1.split("\n");
+
+    let mut current:Vec<&str> = vec![]; 
+    for line in raw_text_1 {
+        let m = re.find(line);
+        if line.len() < 2 {
+            continue;
+        }
+        if(!m.is_some()) {
+            current.push(line);
+        }
+        else{
+            println!("{:?}\n", current.join(" "));
+            current.clear();
+            current.push(line);
+        }
+    }
+    println!("{:?}\n", current.join(" "));
+
+}
+
+fn write_full_text(url: &str) {
+    let raw_text = extract_tag(url, 0, 1, RAW_TEXT_TAG, "")[0].replace("\t", "");
+    let raw_text = raw_text.replace("\n", "").replace("\t", "");
+    println!("{:?}\n", raw_text);
+}
+
 fn main() {
-    let mut body: &str = "";
-    let links               = main_page_links(1, PAGE_SIZE);
-    for link in links{
-        let url = extract_tag(&link, 1, 1, LINK_TAG, "href");
-        let raw_text_1 = extract_tag(&url[0], 0, 1, RAW_TEXT_TAG, "");
-        println!("{:?}\n", raw_text_1[0].replace("\n", "").replace("\t", ""));
+
+    // Regex will match with strings that start with digit followed by '§'
+    let re = Regex::new(r"^((\d|\s)*§)").unwrap();
+
+    let links = main_page_links(1, PAGE_SIZE);
+
+    for link in links {
+        let url = &extract_tag(&link, 3, 1, LINK_TAG, "href")[0];
+        write_full_text(url)
     }
 
 }
