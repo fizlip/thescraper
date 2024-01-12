@@ -1,16 +1,17 @@
-use std::error::Error;
-use futures::executor::block_on;
+use std::thread;
 use scraper::{Html, Selector};
-use scraper::html::Select;
-use std::iter::Enumerate;
-use scraper::ElementRef;
 use regex::Regex;
-use std::fs;
-use more_asserts::assert_le;
+use std::fs::File;
+use std::io::prelude::*;
+use std::time::{Instant};
 
+
+/** Constants                                                               **/
 const PAGE_SIZE:usize = 20;
 const LINK_TAG: &str = "a.sc-3189427c-0";
 const RAW_TEXT_TAG: &str = "div.body-text";
+const IGNORE: usize = 1;
+/**                                                                         **/
 
 /// main_page_links will retrieve all law links from www.riksdagen.se
 /// @params i -- the page to retrieve
@@ -19,7 +20,7 @@ const RAW_TEXT_TAG: &str = "div.body-text";
 fn main_page_links(i: u64, take: usize) -> Vec<String>{
     // Get HTML 
     let url = format!("https://www.riksdagen.se/sv/sok/?doktyp=sfs&dokstat=g%C3%A4llande+sfs&p={}",i);
-    let iter = extract_tag(&url, 3, take, LINK_TAG, "href");
+    let iter = extract_tag(&url, IGNORE, take, LINK_TAG, "href");
     iter
 }
 
@@ -37,7 +38,16 @@ fn extract_tag(url: &str, ignore: usize, take: usize, tag: &str, attr: &str) -> 
     // Get HTML 
     let mut _ignore = 0;
     let body_future = reqwest::blocking::get(url);
-    let body = &body_future.unwrap().text().unwrap();
+    let body = match body_future {
+        Ok(b) => b.text().unwrap(),
+        Err(_) => String::from(""),
+    };
+
+    if body.len() == 0 {
+        return vec![];
+    }
+
+    let body = &body;
 
     // Parse
     let document = Html::parse_document(body);
@@ -50,13 +60,20 @@ fn extract_tag(url: &str, ignore: usize, take: usize, tag: &str, attr: &str) -> 
         _ignore += 1;
     }
 
-    let mut res: Vec<String>;
+    let res: Vec<String>;
 
     if attr.len() > 0 {
         res = iter.take(take).map(|x| x.value().attr(attr).unwrap().to_string()).collect();
     }
     else {
-        res = iter.map(|x| x.text().next().unwrap().to_string()).collect();
+        //res = iter.map(|x| x.text().next().expect(&format!("Error at {}", url)).to_string()).collect();
+        match iter.take(1).collect::<Vec<_>>().first() {
+            Some(v) => res = match v.text().next() {
+                Some(val) => vec![val.to_string()],
+                None => vec![]
+            },
+            None => res = vec![],
+        }
     }
 
     res
@@ -71,8 +88,12 @@ fn write_paragraphs(url: &str) -> Vec<String> {
     let re: regex::Regex = Regex::new(r"^((\d|\s)*§)").unwrap();
     let mut paragraphs: Vec<String> = vec![];
 
-    println!("{:?}", url);
-    let raw_text_1 = extract_tag(url, 0, 1, RAW_TEXT_TAG, "")[0].replace("\t", "");
+    let raw_text_1 = extract_tag(url, 0, 1, RAW_TEXT_TAG, "");
+    if raw_text_1.len() == 0 {
+        println!("Error for {:?}", url);
+        return vec![];
+    }
+    let raw_text_1 = raw_text_1[0].replace("\t", "");
     let raw_text_1 = raw_text_1.split("\n");
 
     let mut current:Vec<&str> = vec![]; 
@@ -81,7 +102,7 @@ fn write_paragraphs(url: &str) -> Vec<String> {
         if line.len() < 2 {
             continue;
         }
-        if(!m.is_some()) {
+        if !m.is_some() {
             current.push(line);
         }
         else{
@@ -101,27 +122,132 @@ fn write_paragraphs(url: &str) -> Vec<String> {
 /// @params url: &str -- the url to get content from
 /// @returns String -- string with text content from the website, no newline or tabs
 fn write_full_text(url: &str) -> String{
-    let raw_text = extract_tag(url, 0, 1, RAW_TEXT_TAG, "")[0].replace("\t", "");
+    let raw_text = extract_tag(url, 0, 1, RAW_TEXT_TAG, "");
+    if raw_text.len() == 0 {
+        return String::from("");
+    }
+    let raw_text = raw_text[0].replace("\t", "");
     let raw_text = raw_text.replace("\n", "").replace("\t", "");
 
     raw_text
 }
 
-fn main() {
+/// scrape_page will create .txt files for all paragraphs and laws on the 
+/// given page
+fn scrape_page(page: u64) -> std::io::Result<()>{
+    let law_id_regex = Regex::new(r"\d\d\d\d:\d*").unwrap();
 
-    // Regex will match with strings that start with digit followed by '§'
-    let re = Regex::new(r"^((\d|\s)*§)").unwrap();
-
-    let links = main_page_links(1, PAGE_SIZE);
+    let links = main_page_links(page, PAGE_SIZE);
 
     for link in links {
-        let url = &extract_tag(&link, 3, 1, LINK_TAG, "href")[0];
-        //let text = write_full_text(url);
-        let ps = write_paragraphs(url);
+        let url = &extract_tag(&link, IGNORE, 1, LINK_TAG, "href");
+        if url.len() == 0 {
+            continue
+        }
+        
+        let url = &url[0];
 
-        println!("{:?}", ps);
+        let law_id = law_id_regex.find(url).expect(&format!("error on url: {}", url)).as_str().replace(":", "_");
+
+        // Create file
+        let f_name = format!("/home/filip/Dokument/lawgpt/laws/raw/{}.txt", law_id);
+        println!("Writing {}", f_name);
+
+        let mut file_raw = File::create(f_name)?;
+
+        // Get data
+        let ps = write_paragraphs(url);
+        let raw = write_full_text(url);
+
+        if raw.len() > 0 {
+            file_raw.write_all(raw.as_bytes())?;
+        }
+
+        for (i,p) in ps.into_iter().enumerate() {
+            let f_name_p = format!("/home/filip/Dokument/lawgpt/laws/paragraphs/{}-{}.txt", law_id, i);
+            let mut file_paragraph = File::create(f_name_p)?;
+            file_paragraph.write_all(p.as_bytes())?;
+        }
     }
 
+    Ok(())
+}
+
+fn main() -> std::io::Result<()>{
+    let start = Instant::now();
+
+    let start_batch = 8;
+
+    let handle_1 = thread::spawn(move || {
+        for n in start_batch..26u64 {
+            let _ = scrape_page(2 + 10 * n);
+        }
+    });
+    let handle_2 = thread::spawn(move || {
+        for n in start_batch..26u64 {
+            let _ = scrape_page(3 + 10 * n);
+        }
+    });
+    let handle_3 = thread::spawn(move || {
+        for n in start_batch..26u64 {
+            let _ = scrape_page(4 + 10*n);
+        }
+    });
+    let handle_4 = thread::spawn(move || {
+        for n in start_batch..26u64 {
+            let _ = scrape_page(5 + 10*n);
+        }
+    });
+    let handle_5 = thread::spawn(move || {
+        for n in start_batch..26u64 {
+            let _ = scrape_page(6 + 10*n);
+        }
+    });
+    let handle_6 = thread::spawn(move || {
+        for n in start_batch..25u64 {
+            let _ = scrape_page(7 + 10*n);
+        }
+    });
+    let handle_7 = thread::spawn(move || {
+        for n in start_batch..25u64 {
+            let _ = scrape_page(8 + 10*n);
+        }
+    });
+    let handle_8 = thread::spawn(move || {
+        for n in start_batch..25u64 {
+            let _ = scrape_page(9 + 10*n);
+        }
+    });
+    let handle_9 = thread::spawn(move || {
+        for n in start_batch..25u64 {
+            let _ = scrape_page(10 + 10*n);
+        }
+    });
+
+    for n in start_batch..26u64 {
+        println!("---------------------------------------------------------------");
+        println!("Getting batch {}", n);
+        println!("---------------------------------------------------------------");
+
+        let _ = scrape_page(1+ 10*n);
+
+    }
+
+    handle_1.join().expect("Could not unwrap thread");
+    handle_2.join().expect("Could not unwrap thread");
+    handle_3.join().expect("Could not unwrap thread");
+    handle_4.join().expect("Could not unwrap thread");
+    handle_5.join().expect("Could not unwrap thread");
+    //handle_6.join().expect("Could not unwrap thread");
+    handle_7.join().expect("Could not unwrap thread");
+    handle_8.join().expect("Could not unwrap thread");
+    handle_9.join().expect("Could not unwrap thread");
+
+    let duration = start.elapsed();
+
+
+    println!("Time elapsed {:?}", duration);
+    Ok(())
 }
 
 #[cfg(test)]

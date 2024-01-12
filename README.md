@@ -21,15 +21,15 @@ http://rkrattsbaser.gov.se/sfsr?bet=LAW_ID
 ```
 This site contains the raw text in a div that has the class 'body-text'.
 
-In summary the scraper gets 20 links page then extract a link for each of
+In summary the scraper gets 20 links per page then extract a link for each of
 those and then gets the raw text.
 
 ```
 page link -> law page link -> raw text from official source
 ```
 We do this for all 268 pages on the website, resulting in a structured dataset
-of all swedish laws.
-
+of all swedish laws. In total we will be making 268 * 20 * 20 = 107200 requests.
+With a normal connection it takes about 1 day to get all laws.
 ## Usage
 
 ```
