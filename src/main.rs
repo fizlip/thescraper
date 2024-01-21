@@ -4,14 +4,18 @@ use regex::Regex;
 use std::fs::File;
 use std::io::prelude::*;
 use std::time::{Instant};
+use openai_api_rs::v1::api::Client;
+use openai_api_rs::v1::embedding::EmbeddingRequest;
+use openai_api_rs::v1::embedding::EmbeddingResponse;
+use std::fs;
+use std::env;
 
 
-/** Constants                                                               **/
+// Constants                                                               
 const PAGE_SIZE:usize = 20;
 const LINK_TAG: &str = "a.sc-3189427c-0";
 const RAW_TEXT_TAG: &str = "div.body-text";
 const IGNORE: usize = 1;
-/**                                                                         **/
 
 /// main_page_links will retrieve all law links from www.riksdagen.se
 /// @params i -- the page to retrieve
@@ -24,7 +28,7 @@ fn main_page_links(i: u64, take: usize) -> Vec<String>{
     iter
 }
 
-/// extract_tag will return an array will all html tags from a url that match the 
+/// extract_tag will return an array with all html tags from a url that match the 
 /// tag given.
 /// ignore and take define the section of the page to select attr defines the 
 /// attribute we want to extract from each tag.
@@ -66,7 +70,6 @@ fn extract_tag(url: &str, ignore: usize, take: usize, tag: &str, attr: &str) -> 
         res = iter.take(take).map(|x| x.value().attr(attr).unwrap().to_string()).collect();
     }
     else {
-        //res = iter.map(|x| x.text().next().expect(&format!("Error at {}", url)).to_string()).collect();
         match iter.take(1).collect::<Vec<_>>().first() {
             Some(v) => res = match v.text().next() {
                 Some(val) => vec![val.to_string()],
@@ -118,7 +121,7 @@ fn write_paragraphs(url: &str) -> Vec<String> {
 }
 
 /// write_full_text will extract the raw text content from a url using the 
-/// RAW_TEXT_TAG
+/// RAW_TEXT_TAG this function is used to write the full law into a text file
 /// @params url: &str -- the url to get content from
 /// @returns String -- string with text content from the website, no newline or tabs
 fn write_full_text(url: &str) -> String{
@@ -167,11 +170,64 @@ fn scrape_page(page: u64) -> std::io::Result<()>{
             let f_name_p = format!("/home/filip/Dokument/lawgpt/laws/paragraphs/{}-{}.txt", law_id, i);
             let mut file_paragraph = File::create(f_name_p)?;
             file_paragraph.write_all(p.as_bytes())?;
+            create_embedding("/home/filip/Dokument/lawgpt/laws/embeddings/{}-{}.txt", 0);
         }
     }
 
     Ok(())
 }
+
+
+fn request_embedding(text: String) -> Option<EmbeddingResponse> {
+    let client = Client::new(env::var("OPENAI_API_KEY").unwrap().to_string());
+
+    // Openai does not allow strings that are too long
+    if text.len() > 8191 {
+        println!("Input too long");
+        return None;
+    } 
+    let req = EmbeddingRequest::new(
+        "text-embedding-ada-002".to_string(),
+        text.to_string(),
+    );
+    let response =
+        client.embedding(req).ok()?;
+        Some(response)
+}
+
+fn create_embedding(fname: &str, tries: u64) -> Result<(), Box<dyn std::error::Error>> {
+    let paragraph = fs::read_to_string(fname).expect("Could not read file");
+
+    let mut embedding:String = match request_embedding(paragraph) {
+        Some(v) => v.data[0]
+            .embedding
+            .iter()
+            .map(|v| v.to_string() + ",")
+            .collect(),
+        None => String::from(""),
+    };
+
+    if embedding.len() < 10 {
+        if tries > 3 {
+            println!("Failed to embed: {}", fname);
+            ()
+        }
+        else {
+            println!("Could not get trying again");
+            return create_embedding(fname, tries + 1);
+        }
+    }
+
+    embedding.pop();
+
+    let new_fname = fname.replace("laws", "embeddings");
+    let mut embedded_paragraph = File::create(new_fname.clone())?;
+    println!("writing in {}", new_fname.clone());
+    embedded_paragraph.write_all(embedding.as_bytes())?;
+
+    Ok(())
+}
+
 
 fn main() -> std::io::Result<()>{
     let start = Instant::now();
