@@ -1,71 +1,18 @@
-use std::fs::File;
-use std::io::prelude::*;
-use openai_api_rs::v1::api::Client;
-use openai_api_rs::v1::embedding::EmbeddingRequest;
-use openai_api_rs::v1::embedding::EmbeddingResponse;
-use std::fs;
-use std::env;
-
 mod paragrapher;
-
-fn request_embedding(text: String) -> Option<EmbeddingResponse> {
-    let client = Client::new(env::var("OPENAI_API_KEY").unwrap().to_string());
-
-    // Openai does not allow strings that are too long
-    if text.len() > 8191 {
-        println!("Input too long");
-        return None;
-    } 
-    let req = EmbeddingRequest::new(
-        "text-embedding-ada-002".to_string(),
-        text.to_string(),
-    );
-    let response =
-        client.embedding(req).ok()?;
-        Some(response)
-}
-
-fn create_embedding(fname: &str, tries: u64) -> Result<(), Box<dyn std::error::Error>> {
-    let paragraph = fs::read_to_string(fname).expect("Could not read file");
-
-    let mut embedding:String = match request_embedding(paragraph) {
-        Some(v) => v.data[0]
-            .embedding
-            .iter()
-            .map(|v| v.to_string() + ",")
-            .collect(),
-        None => String::from(""),
-    };
-
-    if embedding.len() < 10 {
-        if tries > 3 {
-            println!("Failed to embed: {}", fname);
-            ()
-        }
-        else {
-            println!("Could not get trying again");
-            return create_embedding(fname, tries + 1);
-        }
-    }
-
-    embedding.pop();
-
-    let new_fname = fname.replace("laws", "embeddings");
-    let mut embedded_paragraph = File::create(new_fname.clone())?;
-    println!("writing in {}", new_fname.clone());
-    embedded_paragraph.write_all(embedding.as_bytes())?;
-
-    Ok(())
-}
-
+mod embedder;
 
 fn main() -> std::io::Result<()>{
     //let start = Instant::now();
 
     // let start_batch = 8;
 
-    paragrapher::demo();
-
+    let res = paragrapher::scrape_page(1)?;
+    if res.len() > 0 {
+        let ps = String::from(&res[0][0]);
+        let emb = embedder::create_embedding(ps, 0).expect("Could not create embedding");
+        println!("{}", emb);
+        
+    }
     //let handle_1 = thread::spawn(move || {
     //    for n in start_batch..26u64 {
     //        let _ = scrape_page(2 + 10 * n);

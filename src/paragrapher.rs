@@ -124,12 +124,14 @@ fn write_full_text(url: &str) -> String{
     raw_text
 }
 
-/// scrape_page will create .txt files for all paragraphs and laws on the 
+/// scrape_page will a 2d vector containing all paragraphs for each url on the 
 /// given page
-fn scrape_page(page: u64) -> std::io::Result<()>{
+pub fn scrape_page(page: u64) -> std::io::Result<(Vec<Vec<String>>)>{
     let law_id_regex = Regex::new(r"\d\d\d\d:\d*").unwrap();
 
     let links = main_page_links(page, PAGE_SIZE);
+
+    let mut res:Vec<Vec<String>> = vec![];
 
     for link in links {
         let url = &extract_tag(&link, IGNORE, 1, LINK_TAG, "href");
@@ -141,36 +143,33 @@ fn scrape_page(page: u64) -> std::io::Result<()>{
 
         let law_id = law_id_regex.find(url).expect(&format!("error on url: {}", url)).as_str().replace(":", "_");
 
-        // Create file
-        let f_name = format!("/home/filip/Dokument/lawgpt/laws/raw/{}.txt", law_id);
-        println!("Writing {}", f_name);
-
-        let mut file_raw = File::create(f_name).expect("can't create file...");
-
         // Get data
+        println!("{}", url);
         let ps = write_paragraphs(url);
-        let raw = write_full_text(url);
-
-        if raw.len() > 0 {
-            file_raw.write_all(raw.as_bytes())?;
-        }
-
-        for (i,p) in ps.into_iter().enumerate() {
-            let f_name_p = format!("/home/filip/Dokument/lawgpt/laws/paragraphs/{}-{}.txt", law_id, i);
-            let mut file_paragraph = File::create(f_name_p)?;
-            file_paragraph.write_all(p.as_bytes())?;
-            if DEBUG {
-                println!("{:?}", p);
-                println!("{:?}", "-------------------------------------");
-            }
-            // create_embedding("/home/filip/Dokument/lawgpt/laws/embeddings/{}-{}.txt", 0);
-        }
+        res.push(ps);
         break;
     }
 
-    Ok(())
+    Ok(res)
+}
+
+/// write_file will write the given content to a file named f_name
+pub fn write_file(f_name:&str, content: String) {
+    let mut file = File::create(f_name)
+        .expect(&format!("Could not create file {}", f_name));
+    file
+        .write_all(
+            content
+            .as_bytes()
+        )
+        .expect(&format!("Could not write to file {}", f_name));
+
 }
 
 pub fn demo() {
-    let _ = scrape_page(9);
+    let res = scrape_page(1);
+
+    for (i, p) in res.unwrap().into_iter().enumerate() {
+        println!("{:?}", p);
+    }
 }
