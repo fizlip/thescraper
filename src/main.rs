@@ -1,5 +1,6 @@
 mod paragrapher;
 mod embedder;
+mod uploader;
 
 fn main() -> std::io::Result<()>{
     //let start = Instant::now();
@@ -10,6 +11,7 @@ fn main() -> std::io::Result<()>{
     if res.len() > 0 {
         let ps = String::from(&res[0][0]);
         let emb = embedder::create_embedding(ps, 0).expect("Could not create embedding");
+        uploader::write_file_local("./test.txt", emb.clone());
         println!("{}", emb);
         
     }
