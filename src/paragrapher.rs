@@ -1,14 +1,12 @@
 use scraper::{Html, Selector};
 use regex::Regex;
-use std::fs::File;
-use std::io::prelude::*;
+use std::collections::HashMap;
 
 // Constants (current hardcoded) 
 const PAGE_SIZE:usize = 20;
 const LINK_TAG: &str = "a.sc-3189427c-0";
 const RAW_TEXT_TAG: &str = "div.body-text";
 const IGNORE: usize = 1;
-const DEBUG: bool = true;
 
 /// main_page_links (S1) will retrieve all law links from www.riksdagen.se
 /// @params i -- the page to retrieve
@@ -126,12 +124,16 @@ fn write_full_text(url: &str) -> String{
 
 /// scrape_page will a 2d vector containing all paragraphs for each url on the 
 /// given page
-pub fn scrape_page(page: u64) -> std::io::Result<(Vec<Vec<String>>)>{
+pub fn scrape_page(page: u64) -> std::io::Result<HashMap<String, Vec<String>>>{
     let law_id_regex = Regex::new(r"\d\d\d\d:\d*").unwrap();
 
     let links = main_page_links(page, PAGE_SIZE);
 
-    let mut res:Vec<Vec<String>> = vec![];
+    let mut res = HashMap::new();
+
+    if links.len() == 0 {
+        return Ok(res);
+    }
 
     for link in links {
         let url = &extract_tag(&link, IGNORE, 1, LINK_TAG, "href");
@@ -141,22 +143,16 @@ pub fn scrape_page(page: u64) -> std::io::Result<(Vec<Vec<String>>)>{
         
         let url = &url[0];
 
-        let law_id = law_id_regex.find(url).expect(&format!("error on url: {}", url)).as_str().replace(":", "_");
-
-        // Get data
-        println!("{}", url);
-        let ps = write_paragraphs(url);
-        res.push(ps);
-        break;
+        if law_id_regex.is_match(url) {
+            let law_id = law_id_regex.find(url).expect("URL error").as_str().replace(":", "_");
+            let ps = write_paragraphs(url);
+            res.insert(String::from(law_id), ps);
+        }
+        else{
+            continue
+        }
     }
 
     Ok(res)
 }
 
-pub fn demo() {
-    let res = scrape_page(1);
-
-    for (i, p) in res.unwrap().into_iter().enumerate() {
-        println!("{:?}", p);
-    }
-}

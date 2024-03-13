@@ -1,89 +1,47 @@
+use std::thread;
+use std::time::Duration;
+
 mod paragrapher;
 mod embedder;
 mod uploader;
+
+fn create_embedding_files(p:u64) -> std::io::Result<()> {
+    let res = paragrapher::scrape_page(p)?;
+
+    if res.len() == 0 {
+        thread::sleep(Duration::from_secs(1000));
+    }
+
+    for (law_id, ps) in &res {
+        for (i,p) in ps.into_iter().enumerate() {
+            //let emb = embedder::create_embedding(String::from(p), 0).expect("Could not create embedding");
+            uploader::write_file_local(&format!("/home/filip/Dokument/lawgpt/laws/paragraphs/{}-{}.txt", law_id, i), p.to_string());
+        }
+    }
+
+    Ok(())
+} 
 
 fn main() -> std::io::Result<()>{
     //let start = Instant::now();
 
     // let start_batch = 8;
+    let mut ts = vec![];
 
-    let res = paragrapher::scrape_page(1)?;
-    if res.len() > 0 {
-        let ps = String::from(&res[0][0]);
-        let emb = embedder::create_embedding(ps, 0).expect("Could not create embedding");
-        uploader::write_file_local("./test.txt", emb.clone());
-        println!("{}", emb);
-        
+    for i in 0..10 {
+        let handle = thread::spawn(move || {
+            for j in 25..26 {
+                println!("Doing page {}", i + 10*j);
+                let _ = create_embedding_files(i + 10*j);
+            }
+        });
+        ts.push(handle)
     }
-    //let handle_1 = thread::spawn(move || {
-    //    for n in start_batch..26u64 {
-    //        let _ = scrape_page(2 + 10 * n);
-    //    }
-    //});
-    //let handle_2 = thread::spawn(move || {
-    //    for n in start_batch..26u64 {
-    //        let _ = scrape_page(3 + 10 * n);
-    //    }
-    //});
-    //let handle_3 = thread::spawn(move || {
-    //    for n in start_batch..26u64 {
-    //        let _ = scrape_page(4 + 10*n);
-    //    }
-    //});
-    //let handle_4 = thread::spawn(move || {
-    //    for n in start_batch..26u64 {
-    //        let _ = scrape_page(5 + 10*n);
-    //    }
-    //});
-    //let handle_5 = thread::spawn(move || {
-    //    for n in start_batch..26u64 {
-    //        let _ = scrape_page(6 + 10*n);
-    //    }
-    //});
-    //let handle_6 = thread::spawn(move || {
-    //    for n in start_batch..25u64 {
-    //        let _ = scrape_page(7 + 10*n);
-    //    }
-    //});
-    //let handle_7 = thread::spawn(move || {
-    //    for n in start_batch..25u64 {
-    //        let _ = scrape_page(8 + 10*n);
-    //    }
-    //});
-    //let handle_8 = thread::spawn(move || {
-    //    for n in start_batch..25u64 {
-    //        let _ = scrape_page(9 + 10*n);
-    //    }
-    //});
-    //let handle_9 = thread::spawn(move || {
-    //    for n in start_batch..25u64 {
-    //        let _ = scrape_page(10 + 10*n);
-    //    }
-    //});
 
-    //for n in start_batch..26u64 {
-    //    println!("---------------------------------------------------------------");
-    //    println!("Getting batch {}", n);
-    //    println!("---------------------------------------------------------------");
+    for t in ts {
+        t.join().expect("Could not unwrap thread");
+    }
 
-    //    let _ = scrape_page(1+ 10*n);
-
-    //}
-
-    //handle_1.join().expect("Could not unwrap thread");
-    //handle_2.join().expect("Could not unwrap thread");
-    //handle_3.join().expect("Could not unwrap thread");
-    //handle_4.join().expect("Could not unwrap thread");
-    //handle_5.join().expect("Could not unwrap thread");
-    ////handle_6.join().expect("Could not unwrap thread");
-    //handle_7.join().expect("Could not unwrap thread");
-    //handle_8.join().expect("Could not unwrap thread");
-    //handle_9.join().expect("Could not unwrap thread");
-
-    //let duration = start.elapsed();
-
-
-    //println!("Time elapsed {:?}", duration);
     Ok(())
 }
 

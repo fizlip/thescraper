@@ -1,12 +1,9 @@
-use std::fs::File;
-use std::io::prelude::*;
 use openai_api_rs::v1::api::Client;
 use openai_api_rs::v1::embedding::EmbeddingRequest;
 use openai_api_rs::v1::embedding::EmbeddingResponse;
-use std::fs;
 use std::env;
 
-pub fn request_oai_embedding(text: String) -> Option<EmbeddingResponse> {
+fn request_oai_embedding(text: String) -> Option<EmbeddingResponse> {
     let client = Client::new(env::var("OPENAI_API_KEY").unwrap().to_string());
 
     // Openai does not allow strings that are too long
